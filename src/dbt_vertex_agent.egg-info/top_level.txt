@@ -1,0 +1,1 @@
+dbt_vertex_agent

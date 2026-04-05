@@ -1,0 +1,11 @@
+[
+  {
+    "selector": {
+      "kind": "glob",
+      "pattern": "models/staging/**"
+    },
+    "guidance_files": [
+      "scoped/staging-guidance.md"
+    ]
+  }
+]
