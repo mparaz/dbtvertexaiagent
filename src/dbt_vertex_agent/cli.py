@@ -1,23 +1,28 @@
 import argparse
-from dataclasses import dataclass
 import os
-from pathlib import Path
-import tempfile
 import sys
-from typing import Callable, Sequence
+import tempfile
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from dbt_vertex_agent.agent import review_submission
 from dbt_vertex_agent.config import Config, load_config
-from dbt_vertex_agent.http_client import post_review_to_local_service
+from dbt_vertex_agent.integrations.agent_engine import run_remote_review
+from dbt_vertex_agent.integrations.storage import upload_file
+from dbt_vertex_agent.integrations.vertex import build_vertex_model_callback
 from dbt_vertex_agent.models import ReviewRequest, SubmissionArtifacts
 from dbt_vertex_agent.output import OutputPaths, write_review_artifacts
 from dbt_vertex_agent.packaging import create_project_archive, prepare_submission
-from dbt_vertex_agent.model_client import build_vertex_model_callback
-from dbt_vertex_agent.remote import run_remote_review
-from dbt_vertex_agent.review_contract import ReviewResult
-from dbt_vertex_agent.service import create_app
-from dbt_vertex_agent.service_handlers import default_model_callback
-from dbt_vertex_agent.storage import upload_file
+from dbt_vertex_agent.review.contracts import ReviewResult
+from dbt_vertex_agent.service.app import create_app
+from dbt_vertex_agent.service.client import post_review_to_local_service
+from dbt_vertex_agent.service.contracts import ReducedReviewContext
+from dbt_vertex_agent.service.handlers import default_model_callback
+
+ModelPayload = dict[str, object]
+ModelCallback = Callable[[ReducedReviewContext], ModelPayload]
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -107,9 +112,11 @@ def build_default_review(
     debug_enabled: bool = False,
 ) -> Callable[[SubmissionArtifacts], ReviewResult]:
     if config.local_service_url:
+        local_service_url = config.local_service_url
+
         def review_via_local_service(submission: SubmissionArtifacts) -> ReviewResult:
             return post_review_to_local_service(
-                config.local_service_url,
+                local_service_url,
                 Path(submission.project_uri),
                 Path(submission.manifest_uri),
                 debug_enabled=debug_enabled,
@@ -121,7 +128,8 @@ def build_default_review(
     # Otherwise we fall back to the local review function, which is useful for tests
     # and for understanding the review flow without deploying first.
     if config.agent_resource_name:
-        return lambda submission: run_remote_review(config.agent_resource_name, submission)
+        agent_resource_name = config.agent_resource_name
+        return lambda submission: run_remote_review(agent_resource_name, submission)
 
     return review_submission
 
@@ -143,14 +151,14 @@ def prepare_local_service_submission(request: ReviewRequest) -> SubmissionArtifa
 
 def build_service_model_callback_from_environment(
     env: dict[str, str] | None = None,
-):
-    env = env or os.environ
-    model_name = env.get("DBT_VERTEX_MODEL")
+) -> ModelCallback:
+    environment: dict[str, str] = dict(os.environ) if env is None else env
+    model_name = environment.get("DBT_VERTEX_MODEL")
     if not model_name:
         return default_model_callback
 
-    project_id = env.get("DBT_VERTEX_PROJECT_ID")
-    region = env.get("DBT_VERTEX_REGION")
+    project_id = environment.get("DBT_VERTEX_PROJECT_ID")
+    region = environment.get("DBT_VERTEX_REGION")
     if not project_id or not region:
         raise ValueError(
             "DBT_VERTEX_PROJECT_ID and DBT_VERTEX_REGION are required when DBT_VERTEX_MODEL is set."
@@ -163,7 +171,10 @@ def build_service_model_callback_from_environment(
     )
 
 
-def run_local_service(args: argparse.Namespace, server_factory=create_app) -> None:
+def run_local_service(
+    args: argparse.Namespace,
+    server_factory: Callable[..., Any] = create_app,
+) -> None:
     model_callback = build_service_model_callback_from_environment()
     service_debug_enabled = os.environ.get("DBT_VERTEX_DEBUG", "").strip().lower() in {
         "1",

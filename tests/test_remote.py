@@ -19,20 +19,12 @@ class ExtractFinalTextTests(unittest.TestCase):
                     ]
                 }
             },
-            {
-                "content": {
-                    "parts": [
-                        {
-                            "text": "{\"run_id\": \"run-123\", \"status\": \"success\"}"
-                        }
-                    ]
-                }
-            },
+            {"content": {"parts": [{"text": '{"run_id": "run-123", "status": "success"}'}]}},
         ]
 
         self.assertEqual(
             extract_final_text(events),
-            "{\"run_id\": \"run-123\", \"status\": \"success\"}",
+            '{"run_id": "run-123", "status": "success"}',
         )
 
 
@@ -48,11 +40,11 @@ class RunRemoteReviewTests(unittest.TestCase):
                         "parts": [
                             {
                                 "text": (
-                                    "{\"run_id\": \"run-123\", "
-                                    "\"status\": \"success\", "
-                                    "\"summary\": \"No findings detected.\", "
-                                    "\"findings\": [], "
-                                    "\"reviewed_files\": [\"models/orders.sql\"]}"
+                                    '{"run_id": "run-123", '
+                                    '"status": "success", '
+                                    '"summary": "No findings detected.", '
+                                    '"findings": [], '
+                                    '"reviewed_files": ["models/orders.sql"]}'
                                 )
                             }
                         ]
@@ -65,7 +57,11 @@ class RunRemoteReviewTests(unittest.TestCase):
             manifest_uri="gs://bucket/submissions/run-123/manifest.json",
         )
 
-        result = run_remote_review("projects/123/locations/us-central1/reasoningEngines/456", submission, app=FakeRemoteApp())
+        result = run_remote_review(
+            "projects/123/locations/us-central1/reasoningEngines/456",
+            submission,
+            app=FakeRemoteApp(),
+        )
 
         self.assertEqual(result.run_id, "run-123")
         self.assertEqual(result.reviewed_files, ["models/orders.sql"])

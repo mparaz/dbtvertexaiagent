@@ -1,4 +1,4 @@
-from dbt_vertex_agent.review_contract import ReviewResult
+from dbt_vertex_agent.review.contracts import ReviewResult
 
 
 def render_terminal_summary(result: ReviewResult) -> str:

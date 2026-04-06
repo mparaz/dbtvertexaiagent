@@ -1,18 +1,20 @@
 import json
 import unittest
 
-from dbt_vertex_agent.model_client import (
+from dbt_vertex_agent.integrations.vertex import (
     build_vertex_model_callback,
     parse_model_response,
 )
-from dbt_vertex_agent.prompt_guidance import SelectedGuidance
-from dbt_vertex_agent.prompting import build_review_prompt
-from dbt_vertex_agent.service_contract import ReducedReviewContext
+from dbt_vertex_agent.prompts.builder import build_review_prompt
+from dbt_vertex_agent.prompts.guidance import SelectedGuidance
+from dbt_vertex_agent.service.contracts import ReducedReviewContext
 
 
 class ParseModelResponseTests(unittest.TestCase):
     def test_parse_model_response_returns_dict_for_valid_json(self) -> None:
-        payload = parse_model_response('{"run_id":"run-123","status":"success","summary":"ok","findings":[],"reviewed_files":[]}')
+        payload = parse_model_response(
+            '{"run_id":"run-123","status":"success","summary":"ok","findings":[],"reviewed_files":[]}'
+        )
 
         self.assertEqual(payload["run_id"], "run-123")
 

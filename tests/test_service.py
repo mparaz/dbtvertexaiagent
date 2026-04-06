@@ -5,9 +5,9 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from dbt_vertex_agent.review_contract import ReviewResult
-from dbt_vertex_agent.service import handle_health_request, handle_review_http_request
-from dbt_vertex_agent.service_handlers import handle_review_upload
+from dbt_vertex_agent.review.contracts import ReviewResult
+from dbt_vertex_agent.service.app import handle_health_request, handle_review_http_request
+from dbt_vertex_agent.service.handlers import handle_review_upload
 
 
 class HandleReviewUploadTests(unittest.TestCase):

@@ -23,7 +23,9 @@ class BuildGcsObjectPathTests(unittest.TestCase):
             file_path = Path(tmp_dir) / "project.zip"
             file_path.write_text("payload")
 
-            object_path = build_gcs_object_path("gs://bucket-name", "submissions/run-123/project.zip")
+            object_path = build_gcs_object_path(
+                "gs://bucket-name", "submissions/run-123/project.zip"
+            )
 
             self.assertEqual(object_path, "gs://bucket-name/submissions/run-123/project.zip")
 
@@ -77,7 +79,9 @@ class UploadFileTests(unittest.TestCase):
 
             self.assertEqual(uploaded_uri, "gs://bucket-name/submissions/run-123/project.zip")
             self.assertEqual(client.bucket_name, "bucket-name")
-            self.assertEqual(client.bucket_instance.last_blob_name, "submissions/run-123/project.zip")
+            self.assertEqual(
+                client.bucket_instance.last_blob_name, "submissions/run-123/project.zip"
+            )
             self.assertEqual(client.bucket_instance.blob_instance.uploaded_from, str(file_path))
 
 
@@ -97,5 +101,7 @@ class DownloadTests(unittest.TestCase):
 
         client = FakeClient()
 
-        self.assertEqual(download_bytes("gs://bucket-name/path/file.txt", client=client), b"payload")
+        self.assertEqual(
+            download_bytes("gs://bucket-name/path/file.txt", client=client), b"payload"
+        )
         self.assertEqual(download_text("gs://bucket-name/path/file.txt", client=client), "payload")

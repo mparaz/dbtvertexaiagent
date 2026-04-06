@@ -2,7 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dbt_vertex_agent.http_client import build_multipart_body, normalize_base_url, post_review_to_local_service
+from dbt_vertex_agent.http_client import (
+    build_multipart_body,
+    normalize_base_url,
+    post_review_to_local_service,
+)
 from dbt_vertex_agent.review_contract import ReviewResult
 
 

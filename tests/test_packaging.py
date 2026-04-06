@@ -1,7 +1,7 @@
 import tempfile
 import unittest
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 from dbt_vertex_agent.models import ReviewRequest, SubmissionArtifacts
 from dbt_vertex_agent.packaging import create_project_archive, prepare_submission
@@ -30,7 +30,7 @@ class PrepareSubmissionTests(unittest.TestCase):
             (project_root / "models").mkdir(parents=True)
             (project_root / "models" / "orders.sql").write_text("select 1\n")
             manifest_path.parent.mkdir(parents=True)
-            manifest_path.write_text("{\"nodes\": {}}\n")
+            manifest_path.write_text('{"nodes": {}}\n')
 
             request = ReviewRequest(
                 project_path=project_root,

@@ -7,6 +7,7 @@ Local CLI and Vertex AI agent runtime for reviewing dbt projects.
 This repository now contains:
 
 - a Python package scaffold under `src/dbt_vertex_agent/`
+- a shallow internal package split under `review/`, `prompts/`, `service/`, and `integrations/`
 - config loading for local development
 - dbt project packaging and real GCS upload helpers
 - a manifest-first review runtime that can work from local files or `gs://...` artifacts
@@ -39,6 +40,28 @@ Python `3.11` to `3.13` is the intended range for deployment.
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+## Quality Checks
+
+The repo is configured for:
+
+- `ruff format`
+- `ruff check`
+- `mypy` in strict mode
+
+Install the local dev tools with:
+
+```bash
+pip install -e '.[dev]'
+```
+
+Then run:
+
+```bash
+ruff format .
+ruff check .
+mypy
 ```
 
 ## Deploy to Vertex AI Agent Engine

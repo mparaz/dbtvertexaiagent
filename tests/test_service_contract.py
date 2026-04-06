@@ -1,7 +1,11 @@
 import json
 import unittest
 
-from dbt_vertex_agent.service_contract import DebugArtifacts, LocalServiceRequest, ReducedReviewContext
+from dbt_vertex_agent.service_contract import (
+    DebugArtifacts,
+    LocalServiceRequest,
+    ReducedReviewContext,
+)
 
 
 class LocalServiceRequestTests(unittest.TestCase):

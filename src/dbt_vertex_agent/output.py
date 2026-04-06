@@ -1,10 +1,10 @@
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from dbt_vertex_agent.rendering import render_markdown
-from dbt_vertex_agent.review_contract import ReviewResult
-from dbt_vertex_agent.service_contract import DebugArtifacts
+from dbt_vertex_agent.review.contracts import ReviewResult
+from dbt_vertex_agent.service.contracts import DebugArtifacts
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,8 @@
 
+[dev]
+mypy>=1.18.2
+ruff>=0.14.0
+
 [gcp]
 google-adk
 google-cloud-aiplatform[adk,agent_engines]>=1.111

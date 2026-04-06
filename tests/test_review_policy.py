@@ -1,6 +1,6 @@
 import unittest
 
-from dbt_vertex_agent.review_policy import (
+from dbt_vertex_agent.review.policy import (
     MANIFEST_RULES,
     collect_manifest_findings,
     rule_missing_column_description,

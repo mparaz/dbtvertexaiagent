@@ -1,7 +1,6 @@
-import os
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
 
 from dbt_vertex_agent.cli import (
     build_review_request,
@@ -95,7 +94,7 @@ class RunReviewTests(unittest.TestCase):
             (project_root / "models").mkdir(parents=True)
             (project_root / "models" / "orders.sql").write_text("select 1\n")
             manifest_path.parent.mkdir(parents=True)
-            manifest_path.write_text("{\"nodes\": {}}\n")
+            manifest_path.write_text('{"nodes": {}}\n')
 
             args = parse_args(
                 [
@@ -121,7 +120,11 @@ class RunReviewTests(unittest.TestCase):
                 )
 
             def fake_review(_submission: SubmissionArtifacts) -> ReviewResult:
-                return ReviewResult(run_id="run-123", findings=[], reviewed_files=["models/orders.sql"])
+                return ReviewResult(
+                    run_id="run-123",
+                    findings=[],
+                    reviewed_files=["models/orders.sql"],
+                )
 
             completed = run_review(args, config, prepare=fake_prepare, review=fake_review)
 
@@ -168,7 +171,9 @@ class BuildServiceModelCallbackFromEnvironmentTests(unittest.TestCase):
             )
 
     def test_builds_vertex_callback_when_env_is_complete(self) -> None:
-        original_builder = build_service_model_callback_from_environment.__globals__["build_vertex_model_callback"]
+        original_builder = build_service_model_callback_from_environment.__globals__[
+            "build_vertex_model_callback"
+        ]
         created = {}
 
         def fake_builder(project_id: str, region: str, model_name: str):
@@ -181,7 +186,9 @@ class BuildServiceModelCallbackFromEnvironmentTests(unittest.TestCase):
 
             return callback
 
-        build_service_model_callback_from_environment.__globals__["build_vertex_model_callback"] = fake_builder
+        build_service_model_callback_from_environment.__globals__["build_vertex_model_callback"] = (
+            fake_builder
+        )
         try:
             callback = build_service_model_callback_from_environment(
                 env={
@@ -191,7 +198,9 @@ class BuildServiceModelCallbackFromEnvironmentTests(unittest.TestCase):
                 }
             )
         finally:
-            build_service_model_callback_from_environment.__globals__["build_vertex_model_callback"] = original_builder
+            build_service_model_callback_from_environment.__globals__[
+                "build_vertex_model_callback"
+            ] = original_builder
 
         self.assertEqual(created["project_id"], "test-project")
         self.assertEqual(created["region"], "us-central1")

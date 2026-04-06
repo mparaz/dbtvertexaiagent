@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dbt_vertex_agent.prompt_guidance import (
+from dbt_vertex_agent.prompts.guidance import (
     GlobalGuidanceConfig,
     ScopedGuidanceRule,
     build_selected_guidance,

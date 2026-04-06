@@ -1,11 +1,10 @@
-from collections.abc import Callable
-from pathlib import Path
 import tempfile
 import uuid
 import zipfile
+from collections.abc import Callable
+from pathlib import Path
 
 from dbt_vertex_agent.models import ReviewRequest, SubmissionArtifacts
-
 
 # A submission uploader takes a local file and a destination object key, then
 # returns the final URI of the uploaded object.

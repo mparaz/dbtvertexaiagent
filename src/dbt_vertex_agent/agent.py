@@ -1,16 +1,17 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
 
-from dbt_vertex_agent.manifest_analysis import collect_review_targets
+from dbt_vertex_agent.integrations.storage import download_bytes, download_text
 from dbt_vertex_agent.models import SubmissionArtifacts
-from dbt_vertex_agent.review_contract import ReviewResult
-from dbt_vertex_agent.review_policy import build_review_result
-from dbt_vertex_agent.source_reader import (
+from dbt_vertex_agent.review.contracts import JsonObject, ReviewResult
+from dbt_vertex_agent.review.manifest import collect_review_targets
+from dbt_vertex_agent.review.policy import build_review_result
+from dbt_vertex_agent.review.source_reader import (
     filter_existing_archive_members,
     filter_existing_archive_members_from_bytes,
 )
-from dbt_vertex_agent.storage import download_bytes, download_text
 
 
 def review_submission(submission: SubmissionArtifacts) -> ReviewResult:
@@ -41,7 +42,9 @@ def review_submission(submission: SubmissionArtifacts) -> ReviewResult:
             download_bytes(submission.project_uri), review_targets
         )
     else:
-        reviewed_files = filter_existing_archive_members(Path(submission.project_uri), review_targets)
+        reviewed_files = filter_existing_archive_members(
+            Path(submission.project_uri), review_targets
+        )
 
     # The policy layer decides how to turn "targets vs files found" into findings
     # and a summary. Keeping that logic outside this function makes the review flow
@@ -49,7 +52,7 @@ def review_submission(submission: SubmissionArtifacts) -> ReviewResult:
     return build_review_result(submission.run_id, review_targets, reviewed_files, manifest=manifest)
 
 
-def review_dbt_submission(project_uri: str, manifest_uri: str) -> dict:
+def review_dbt_submission(project_uri: str, manifest_uri: str) -> JsonObject:
     # This function is the tool exposed to the ADK agent. The tool layer uses
     # plain strings because LLM tool calls are much simpler when their inputs are
     # basic JSON types.
@@ -63,7 +66,7 @@ def review_dbt_submission(project_uri: str, manifest_uri: str) -> dict:
     return result.to_dict()
 
 
-def get_root_agent():
+def get_root_agent() -> Any:
     try:
         from google.adk.agents import Agent
     except ImportError as exc:
@@ -75,10 +78,13 @@ def get_root_agent():
     return Agent(
         name="dbt_review_agent",
         model=os.environ.get("DBT_VERTEX_MODEL", "gemini-2.5-flash-lite"),
-        description="Reviews dbt submissions using manifest metadata and uploaded project archives.",
+        description=(
+            "Reviews dbt submissions using manifest metadata and uploaded project archives."
+        ),
         instruction=(
             "You are a dbt project review agent. "
-            "When the user provides project_uri and manifest_uri, call the review_dbt_submission tool. "
+            "When the user provides project_uri and manifest_uri, "
+            "call the review_dbt_submission tool. "
             "Return JSON only, matching the tool output."
         ),
         tools=[review_dbt_submission],

@@ -8,3 +8,6 @@ Requires-Dist: google-adk; extra == "gcp"
 Requires-Dist: google-cloud-aiplatform[adk,agent_engines]>=1.111; extra == "gcp"
 Requires-Dist: google-cloud-storage>=2.16; extra == "gcp"
 Requires-Dist: google-genai>=1.0.0; extra == "gcp"
+Provides-Extra: dev
+Requires-Dist: mypy>=1.18.2; extra == "dev"
+Requires-Dist: ruff>=0.14.0; extra == "dev"

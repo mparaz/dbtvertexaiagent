@@ -15,6 +15,10 @@ gcp = [
   "google-cloud-storage>=2.16",
   "google-genai>=1.0.0",
 ]
+dev = [
+  "mypy>=1.18.2",
+  "ruff>=0.14.0",
+]
 
 [project.scripts]
 dbt-vertex-agent = "dbt_vertex_agent.cli:main"
@@ -24,3 +28,33 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = [
+  "B",
+  "E",
+  "F",
+  "I",
+  "N",
+  "UP",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = [
+  "google.*",
+  "vertexai.*",
+]
+ignore_missing_imports = true
