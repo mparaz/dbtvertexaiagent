@@ -1,56 +1,34 @@
 import argparse
-import os
+import json
 import sys
-import tempfile
+import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from dbt_vertex_agent.agent import review_submission
+from dbt_vertex_agent.agent import extract_text_from_runner_events, get_root_agent
 from dbt_vertex_agent.config import Config, load_config
 from dbt_vertex_agent.integrations.agent_engine import run_remote_review
 from dbt_vertex_agent.integrations.storage import upload_file
-from dbt_vertex_agent.integrations.vertex import build_vertex_model_callback
 from dbt_vertex_agent.models import ReviewRequest, SubmissionArtifacts
 from dbt_vertex_agent.output import OutputPaths, write_review_artifacts
 from dbt_vertex_agent.packaging import create_project_archive, prepare_submission
 from dbt_vertex_agent.review.contracts import ReviewResult
-from dbt_vertex_agent.service.app import create_app
-from dbt_vertex_agent.service.client import post_review_to_local_service
-from dbt_vertex_agent.service.contracts import ReducedReviewContext
-from dbt_vertex_agent.service.handlers import default_model_callback
-
-ModelPayload = dict[str, object]
-ModelCallback = Callable[[ReducedReviewContext], ModelPayload]
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    # The CLI starts small on purpose: one subcommand for the end-to-end review flow.
-    # This keeps the learning surface compact while the project is still evolving.
     parser = argparse.ArgumentParser(prog="dbt-vertex-agent")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # A "review" run always needs two local inputs:
-    # 1. the dbt project root that will be zipped and uploaded
-    # 2. the manifest that will act as the structured analysis harness
     review_parser = subparsers.add_parser("review")
     review_parser.add_argument("--project", type=Path, required=True)
     review_parser.add_argument("--manifest", type=Path, required=True)
-    review_parser.add_argument("--local-service-url")
-    review_parser.add_argument("--debug", action="store_true")
-
-    serve_parser = subparsers.add_parser("serve")
-    serve_parser.add_argument("--host", default="127.0.0.1")
-    serve_parser.add_argument("--port", type=int, default=8000)
 
     return parser.parse_args(list(argv))
 
 
 def build_review_request(args: argparse.Namespace, config: Config) -> ReviewRequest:
-    # Convert CLI args + environment config into one immutable object.
-    # This gives the rest of the system a stable contract instead of passing
-    # around raw argparse namespaces and environment variables.
     return ReviewRequest(
         project_path=args.project,
         manifest_path=args.manifest,
@@ -63,40 +41,78 @@ def build_review_request(args: argparse.Namespace, config: Config) -> ReviewRequ
 
 @dataclass(frozen=True)
 class CompletedReview:
-    # `submission` tells us what was uploaded and under which run ID.
-    # `result` is the structured review returned by the local or remote agent.
-    # `output_paths` tells us where the human-readable and machine-readable
-    # artifacts were written on disk.
     submission: SubmissionArtifacts
     result: ReviewResult
     output_paths: OutputPaths
 
 
-def run_review(
-    args: argparse.Namespace,
-    config: Config,
-    prepare: Callable[[ReviewRequest], SubmissionArtifacts] | None = None,
-    review: Callable[[SubmissionArtifacts], ReviewResult] | None = None,
-) -> CompletedReview:
-    # These hooks make the orchestration function easy to test:
-    # tests can inject fake upload and review functions instead of depending on
-    # real Google Cloud services.
-    prepare = prepare or default_prepare
-    review = review or build_default_review(config, debug_enabled=args.debug)
-    # Step 1: normalize inputs.
-    request = build_review_request(args, config)
-    # Step 2: package + upload the source artifacts.
-    submission = prepare(request)
-    # Step 3: run the actual review, either locally or against a deployed agent.
-    result = review(submission)
-    # Step 4: save artifacts locally so a developer can inspect the run later.
-    output_paths = write_review_artifacts(result, request.output_dir)
-    return CompletedReview(submission=submission, result=result, output_paths=output_paths)
+def run_local_adk_review(submission: SubmissionArtifacts) -> ReviewResult:
+    # Import ADK here so the module can be loaded without google-adk installed.
+    try:
+        from google.adk.runners import Runner
+        from google.adk.sessions import InMemorySessionService
+        from google.genai import types
+    except ImportError as exc:
+        raise RuntimeError("google-adk is required for local review runs.") from exc
+
+    agent = get_root_agent()
+    if agent is None:
+        raise RuntimeError("Root agent could not be constructed. Install google-adk first.")
+
+    session_service = InMemorySessionService()  # type: ignore[no-untyped-call]
+    runner = Runner(
+        agent=agent,
+        app_name="dbt-review",
+        session_service=session_service,
+        auto_create_session=True,
+    )
+
+    # The message tells the agent the run_id plus the two artifact URIs it needs
+    # to call its navigation tools. This mirrors the remote Agent Engine contract.
+    message = (
+        f"Review this dbt submission and return JSON only. "
+        f"run_id={submission.run_id} "
+        f"project_uri={submission.project_uri} "
+        f"manifest_uri={submission.manifest_uri}"
+    )
+    events: list[Any] = list(
+        runner.run(
+            user_id="cli",
+            session_id=submission.run_id,
+            new_message=types.Content(
+                role="user",
+                parts=[types.Part(text=message)],
+            ),
+        )
+    )
+
+    payload = json.loads(extract_text_from_runner_events(events))
+    if not isinstance(payload, dict):
+        raise ValueError("Agent response must be a JSON object.")
+    return ReviewResult.from_model_payload(payload)
 
 
-def default_prepare(request: ReviewRequest) -> SubmissionArtifacts:
-    # `prepare_submission` knows how to build the archive layout and object keys.
-    # The CLI provides the concrete uploader function that talks to GCS.
+def prepare_local_run(request: ReviewRequest) -> SubmissionArtifacts:
+    # For local runs the project archive stays on disk; no GCS upload is needed.
+    # The agent tools read local file paths directly.
+    run_id = uuid.uuid4().hex
+    archive_path = request.output_dir / f"{request.project_path.name}.zip"
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    create_project_archive(request.project_path, archive_path)
+    return SubmissionArtifacts(
+        run_id=run_id,
+        project_uri=str(archive_path),
+        manifest_uri=str(request.manifest_path),
+    )
+
+
+def prepare_remote_run(request: ReviewRequest) -> SubmissionArtifacts:
+    # For the Agent Engine path the project and manifest must be in GCS so the
+    # deployed agent can access them.
+    if not request.staging_bucket:
+        raise ValueError(
+            "DBT_VERTEX_STAGING_BUCKET is required when using a deployed Agent Engine."
+        )
     return prepare_submission(
         request,
         uploader=lambda source_path, destination: upload_file(
@@ -109,112 +125,34 @@ def default_prepare(request: ReviewRequest) -> SubmissionArtifacts:
 
 def build_default_review(
     config: Config,
-    debug_enabled: bool = False,
 ) -> Callable[[SubmissionArtifacts], ReviewResult]:
-    if config.local_service_url:
-        local_service_url = config.local_service_url
-
-        def review_via_local_service(submission: SubmissionArtifacts) -> ReviewResult:
-            return post_review_to_local_service(
-                local_service_url,
-                Path(submission.project_uri),
-                Path(submission.manifest_uri),
-                debug_enabled=debug_enabled,
-            )
-
-        return review_via_local_service
-
-    # If the user configured a deployed Agent Engine resource, prefer the remote path.
-    # Otherwise we fall back to the local review function, which is useful for tests
-    # and for understanding the review flow without deploying first.
     if config.agent_resource_name:
-        agent_resource_name = config.agent_resource_name
-        return lambda submission: run_remote_review(agent_resource_name, submission)
-
-    return review_submission
-
-
-def prepare_local_service_submission(request: ReviewRequest) -> SubmissionArtifacts:
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        archive_path = Path(tmp_dir) / "project.zip"
-        create_project_archive(request.project_path, archive_path)
-        persisted_archive_path = request.output_dir / f"{request.project_path.name}.zip"
-        persisted_archive_path.parent.mkdir(parents=True, exist_ok=True)
-        persisted_archive_path.write_bytes(archive_path.read_bytes())
-
-    return SubmissionArtifacts(
-        run_id="local-service-run",
-        project_uri=str(persisted_archive_path),
-        manifest_uri=str(request.manifest_path),
-    )
+        resource_name = config.agent_resource_name
+        return lambda submission: run_remote_review(resource_name, submission)
+    return run_local_adk_review
 
 
-def build_service_model_callback_from_environment(
-    env: dict[str, str] | None = None,
-) -> ModelCallback:
-    environment: dict[str, str] = dict(os.environ) if env is None else env
-    model_name = environment.get("DBT_VERTEX_MODEL")
-    if not model_name:
-        return default_model_callback
-
-    project_id = environment.get("DBT_VERTEX_PROJECT_ID")
-    region = environment.get("DBT_VERTEX_REGION")
-    if not project_id or not region:
-        raise ValueError(
-            "DBT_VERTEX_PROJECT_ID and DBT_VERTEX_REGION are required when DBT_VERTEX_MODEL is set."
-        )
-
-    return build_vertex_model_callback(
-        project_id=project_id,
-        region=region,
-        model_name=model_name,
-    )
-
-
-def run_local_service(
+def run_review(
     args: argparse.Namespace,
-    server_factory: Callable[..., Any] = create_app,
-) -> None:
-    model_callback = build_service_model_callback_from_environment()
-    service_debug_enabled = os.environ.get("DBT_VERTEX_DEBUG", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    output_root = Path(os.environ.get("DBT_VERTEX_OUTPUT_DIR", "runs"))
-    server = server_factory(
-        args.host,
-        args.port,
-        model_callback=model_callback,
-        debug_enabled=service_debug_enabled,
-        output_root=output_root,
-    )
-    server.serve_forever()
+    config: Config,
+    prepare: Callable[[ReviewRequest], SubmissionArtifacts] | None = None,
+    review: Callable[[SubmissionArtifacts], ReviewResult] | None = None,
+) -> CompletedReview:
+    review = review or build_default_review(config)
+    request = build_review_request(args, config)
+
+    if prepare is None:
+        prepare = prepare_remote_run if config.agent_resource_name else prepare_local_run
+
+    submission = prepare(request)
+    result = review(submission)
+    output_paths = write_review_artifacts(result, request.output_dir)
+    return CompletedReview(submission=submission, result=result, output_paths=output_paths)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    # Entry point used by both `python -m dbt_vertex_agent` and the console script.
     args = parse_args(argv if argv is not None else sys.argv[1:])
-    if args.command == "serve":
-        run_local_service(args)
-        return 0
-
     config = load_config()
-    prepare = default_prepare
-    if args.local_service_url or config.local_service_url:
-        config = Config(
-            project_id=config.project_id,
-            region=config.region,
-            staging_bucket=config.staging_bucket,
-            output_dir=config.output_dir,
-            agent_resource_name=config.agent_resource_name,
-            local_service_url=args.local_service_url or config.local_service_url,
-        )
-        prepare = prepare_local_service_submission
-
-    completed = run_review(args, config, prepare=prepare)
-    # For now the CLI prints the markdown artifact path. That keeps stdout simple
-    # while still giving the developer a concrete file to open next.
+    completed = run_review(args, config)
     print(completed.output_paths.markdown_path)
     return 0

@@ -4,7 +4,6 @@ from pathlib import Path
 
 from dbt_vertex_agent.rendering import render_markdown
 from dbt_vertex_agent.review.contracts import ReviewResult
-from dbt_vertex_agent.service.contracts import DebugArtifacts
 
 
 @dataclass(frozen=True)
@@ -13,13 +12,6 @@ class OutputPaths:
     # the CLI show users exactly where artifacts landed.
     json_path: Path
     markdown_path: Path
-
-
-@dataclass(frozen=True)
-class DebugOutputPaths:
-    # These files capture what the local service actually sent to the model.
-    context_path: Path
-    prompt_path: Path
 
 
 def ensure_run_dir(output_root: Path, run_id: str) -> Path:
@@ -41,19 +33,3 @@ def write_review_artifacts(result: ReviewResult, output_root: Path) -> OutputPat
     markdown_path.write_text(render_markdown(result))
 
     return OutputPaths(json_path=json_path, markdown_path=markdown_path)
-
-
-def write_debug_artifacts(
-    run_id: str,
-    debug_artifacts: DebugArtifacts,
-    output_root: Path,
-) -> DebugOutputPaths:
-    run_dir = ensure_run_dir(output_root, run_id)
-
-    context_path = run_dir / "context.json"
-    prompt_path = run_dir / "prompt.txt"
-
-    context_path.write_text(json.dumps(debug_artifacts.context.to_dict(), indent=2))
-    prompt_path.write_text(debug_artifacts.prompt)
-
-    return DebugOutputPaths(context_path=context_path, prompt_path=prompt_path)

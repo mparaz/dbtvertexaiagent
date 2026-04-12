@@ -36,6 +36,12 @@ class LoadConfigTests(unittest.TestCase):
             ),
         )
 
-    def test_load_config_raises_for_missing_required_environment_variables(self) -> None:
-        with self.assertRaisesRegex(ValueError, "DBT_VERTEX_PROJECT_ID"):
-            load_config()
+    def test_load_config_returns_empty_strings_when_gcp_vars_absent(self) -> None:
+        # GCS vars are no longer required at load time — they are only validated
+        # when the remote Agent Engine path is actually used.
+        config = load_config()
+
+        self.assertEqual(config.project_id, "")
+        self.assertEqual(config.region, "")
+        self.assertEqual(config.staging_bucket, "")
+        self.assertIsNone(config.agent_resource_name)
